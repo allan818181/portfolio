@@ -9,3 +9,8 @@ document.querySelectorAll('.filters button').forEach(b=>b.onclick=()=>{document.
 (()=>{const el=document.getElementById('typed');if(!el)return;const phrases=['I build, ship and run production systems.','I keep production online on AWS.','I automate deployments with zero stored keys.'];let i=0,text='',del=false;
 function tick(){const cur=phrases[i];let delay=del?35:60;if(!del&&text===cur){del=true;delay=1400}else if(del&&text===''){del=false;i=(i+1)%phrases.length;delay=300}else{text=del?cur.slice(0,text.length-1):cur.slice(0,text.length+1)}el.textContent=text;setTimeout(tick,delay)}
 text='';el.textContent='';setTimeout(tick,300)})();
+// profile photo: click to view it large; close by clicking anywhere, the X or Escape
+(()=>{const v=document.getElementById('viewer'),me=document.getElementById('me');if(!v||!me)return;
+const open=()=>{v.classList.add('open');document.body.style.overflow='hidden';document.getElementById('viewer-x').focus()};
+const close=()=>{v.classList.remove('open');document.body.style.overflow='';me.focus()};
+me.onclick=open;v.onclick=close;document.addEventListener('keydown',e=>{if(e.key==='Escape'&&v.classList.contains('open'))close()})})();
