@@ -1,0 +1,52 @@
+name: Deploy portfolio
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC: GitHub proves who it is, AWS hands out short-lived credentials
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the site (HTML present, no broken local links)
+        run: |
+          test -f site/index.html && test -f site/404.html
+          for ref in $(grep -oE '(src|href)="assets/[^"]+"' site/index.html | cut -d'"' -f2 | sort -u); do
+            test -f "site/$ref" || { echo "Missing: $ref"; exit 1; }
+          done
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload to S3
+        run: |
+          # Assets are fingerprint-free, so cache them for a day; HTML is always revalidated.
+          aws s3 sync site/ "s3://${{ vars.SITE_BUCKET }}/" --delete --exclude "*.html" \
+            --cache-control "public, max-age=86400"
+          aws s3 sync site/ "s3://${{ vars.SITE_BUCKET }}/" --delete --exclude "*" --include "*.html" \
+            --cache-control "public, max-age=0, must-revalidate" --content-type "text/html; charset=utf-8"
+
+      - name: Refresh the CDN
+        run: |
+          ID=$(aws cloudfront create-invalidation --distribution-id "${{ vars.DISTRIBUTION_ID }}" --paths "/*" --query Invalidation.Id --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "${{ vars.DISTRIBUTION_ID }}" --id "$ID"
+
+      - name: Smoke test
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://allan.tanzaniteauto.com/)
+          echo "HTTP $code"; test "$code" = "200"
